@@ -47,11 +47,142 @@ Kaggle的猫狗数据集是一个常用的图像分类数据集，用于训练�
    - 观察模型在训练和验证集上的表现，进行模型调整和优化，以提高模型的泛化能力和准确率。
    - 可以尝试使用数据增强技术，如旋转、平移、镜像等操作来扩充训练数据集，提高模型的鲁棒性。
 
-6. 结果分析与总结：
-   - 分析模型的性能，比较不同模型和参数配置的效果，并找出最佳模型。
-   - 总结实验过程中遇到的问题和解决方法，并提出进一步改进的方向。
-
 在进行实验时，注意合理设置实验环境，如选择适当的计算设备（如GPU）、使用合适的深度学习框架（如TensorFlow）和相关的库和工具（如NumPy、Matplotlib等）来支持实验的进行和结果分析。
 ## 实验过程
+### 数据预处理
+原始数据集位于./data/original目录下。将原始数据集中的训练集按照6:2:2的比例划分成训练集、验证集和测试集保存在./data/new目录下，在保存时将猫和狗的数据分开存放。
+```python
+import os
+import shutil
+
+# 原始数据集路径
+original_train_dir = '../data/original/train'
+# 新数据集路径
+new_train_dir = '../data/new/train'
+new_validation_dir = '../data/new/validation'
+new_test_dir = '../data/new/test'
+new_dir_lst = [new_train_dir, new_validation_dir, new_test_dir]
+
+for i in range(12500):
+    src_cat = os.path.join(original_train_dir, f'cat.{i}.jpg')
+    src_dog = os.path.join(original_train_dir, f'dog.{i}.jpg')
+    if i < 7500:
+        dst_cat = os.path.join(new_train_dir, 'cats', f'cat.{i}.jpg')
+        dst_dog = os.path.join(new_train_dir, 'dogs', f'dog.{i}.jpg')
+        shutil.copyfile(src_cat, dst_cat)
+        shutil.copyfile(src_dog, dst_dog)
+    elif i < 10000:
+        dst_cat = os.path.join(new_validation_dir, 'cats', f'cat.{i}.jpg')
+        dst_dog = os.path.join(new_validation_dir, 'dogs', f'dog.{i}.jpg')
+        shutil.copyfile(src_cat, dst_cat)
+        shutil.copyfile(src_dog, dst_dog)
+    else:
+        dst_cat = os.path.join(new_test_dir, 'cats', f'cat.{i}.jpg')
+        dst_dog = os.path.join(new_test_dir, 'dogs', f'dog.{i}.jpg')
+        shutil.copyfile(src_cat, dst_cat)
+        shutil.copyfile(src_dog, dst_dog)
+
+
+print('total training cat images:', len(os.listdir('../data/new/train/cats')))
+print('total training dog images:', len(os.listdir('../data/new/train/dogs')))
+print('total validation cat images:', len(os.listdir('../data/new/validation/cats')))
+print('total validation dog images:', len(os.listdir('../data/new/validation/dogs')))
+print('total test cat images:', len(os.listdir('../data/new/test/cats')))
+print('total test dog images:', len(os.listdir('../data/new/test/dogs')))
+```
+预处理结果如下：
+```text
+total training cat images: 7500
+total training dog images: 7500
+total validation cat images: 2500
+total validation dog images: 2500
+total test cat images: 2500
+total test dog images: 2500
+```
+### 模型设计
+设计卷积神经网络，其中包含卷积层、池化层和全连接层。使用relu函数作为中间层激活函数，sigmoid函数作为输出层激活函数进行二分类。
+```python
+model = tf.keras.models.Sequential()
+model.add(tf.keras.layers.Conv2D(32, (3, 3), activation='relu', input_shape=(150, 150, 3)))
+model.add(tf.keras.layers.MaxPooling2D((2, 2)))
+model.add(tf.keras.layers.Conv2D(64, (3, 3), activation='relu'))
+model.add(tf.keras.layers.MaxPooling2D((2, 2)))
+model.add(tf.keras.layers.Conv2D(128, (3, 3), activation='relu'))
+model.add(tf.keras.layers.MaxPooling2D((2, 2)))
+model.add(tf.keras.layers.Conv2D(128, (3, 3), activation='relu'))
+model.add(tf.keras.layers.MaxPooling2D((2, 2)))
+model.add(tf.keras.layers.Flatten())
+model.add(tf.keras.layers.Dropout(0.5))
+model.add(tf.keras.layers.Dense(1024, activation='relu'))
+model.add(tf.keras.layers.Dense(1, activation='sigmoid'))
+```
+### 模型训练
+配置模型时，采用Adam优化算法来更新模型的参数，最小化损失函数。采用Binary Cross-Entropy作为损失函数。采用准确率作为评价函数用于评估当前模型的性能，评价函数的结果不会用于训练过程中。
+```python
+model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=0.001),
+              loss=tf.keras.losses.binary_crossentropy,
+              metrics=['accuracy'])
+```
+Keras中的ImageDataGenerator是一个用于数据增强的工具，它可以生成增加样本多样性的图像数据。我们将其用于训练集和验证集的图像归一化以及训练集的数据增强。在数据增强的过程中，使用rotation_range控制图像随机旋转的角度范围，width_shift_range控制图像水平方向上的随机平移范围，height_shift_range控制图像垂直方向上的随机平移范围，shear_range控制剪切强度的范围，zoom_range控制图像的随机缩放范围，horizontal_flip控制是否随机对图像进行水平翻转。
+```python
+train_datagen = tf.keras.preprocessing.image.ImageDataGenerator(rescale=1. / 255,
+                                                                rotation_range=40,
+                                                                width_shift_range=0.2,
+                                                                height_shift_range=0.2,
+                                                                shear_range=0.2,
+                                                                zoom_range=0.2,
+                                                                horizontal_flip=True)
+test_datagen = tf.keras.preprocessing.image.ImageDataGenerator(rescale=1. / 255)
+```
+flow_from_directory是Keras中一个用于从文件目录中读取图像数据并进行批量生成的函数。它具有以下功能：
+- 从文件目录中读取图像数据：它会自动遍历指定的目录，并加载目录中的图像文件。每个子目录一般对应一个类别。
+
+- 将图像数据进行预处理：它可以对图像进行一些预处理操作，如缩放、归一化、旋转、翻转等，以增强模型的泛化能力和抵抗过拟合。
+
+- 批量生成图像数据：它会自动将加载的图像数据按照指定的批次大小进行划分，并在模型训练和评估时逐批提供给模型。这样可以避免一次性将所有图像数据加载到内存中，从而节省内存资源。
+
+- 自动标记类别：它会自动为加载的图像数据分配对应的类别标签，方便模型学习和预测。
+
+在这里我将batch size设置为128，这是为了加快模型的训练。
+```python
+train_generator = train_datagen.flow_from_directory(train_dir,
+                                                    target_size=(150, 150),
+                                                    batch_size=128,
+                                                    class_mode='binary')
+validation_generator = test_datagen.flow_from_directory(validation_dir,
+                                                        target_size=(150, 150),
+                                                        batch_size=128,
+                                                        class_mode='binary')
+```
+在正式训练模型前设置早停策略。当验证集上的loss值在5次epoch中没有明显变化时结束训练。然后开始训练模型并将训练的模型保存在./model目录下。
+```python
+# 设置早停策略，满足条件即终止训练
+early_stopping = tf.keras.callbacks.EarlyStopping(monitor='val_loss', patience=5, restore_best_weights=True)
+# 训练模型
+history = model.fit(train_generator,
+                    steps_per_epoch=118,
+                    epochs=100,
+                    validation_data=validation_generator,
+                    validation_steps=40,
+                    callbacks=[early_stopping])
+
+# 保存模型
+model.save('../model/dogs_and_cats.h5')
+```
+模型的部分训练过程如下，可以看到在迭代到55次时早停策略发挥作用，模型结束训练。
+```text
+Epoch 51/100
+118/118 [==============================] - 72s 611ms/step - loss: 0.2258 - accuracy: 0.9041 - val_loss: 0.1835 - val_accuracy: 0.9242
+Epoch 52/100
+118/118 [==============================] - 72s 606ms/step - loss: 0.2293 - accuracy: 0.9038 - val_loss: 0.2131 - val_accuracy: 0.9044
+Epoch 53/100
+118/118 [==============================] - 75s 632ms/step - loss: 0.2164 - accuracy: 0.9101 - val_loss: 0.1854 - val_accuracy: 0.9172
+Epoch 54/100
+118/118 [==============================] - 75s 638ms/step - loss: 0.2291 - accuracy: 0.9053 - val_loss: 0.1908 - val_accuracy: 0.9222
+Epoch 55/100
+118/118 [==============================] - 74s 627ms/step - loss: 0.2203 - accuracy: 0.9082 - val_loss: 0.1813 - val_accuracy: 0.9208
+```
+### 模型评估
+
 ## 实验结果及分析
 ## 问题及解决方法
