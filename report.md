@@ -50,7 +50,7 @@ Kaggle的猫狗数据集是一个常用的图像分类数据集，用于训练�
 在进行实验时，注意合理设置实验环境，如选择适当的计算设备（如GPU）、使用合适的深度学习框架（如TensorFlow）和相关的库和工具（如NumPy、Matplotlib等）来支持实验的进行和结果分析。
 ## 实验过程
 ### 数据预处理
-原始数据集位于./data/original目录下。将原始数据集中的训练集按照6:2:2的比例划分成训练集、验证集和测试集保存在./data/new目录下，在保存时将猫和狗的数据分开存放。
+原始数据集位于./data/original目录下。将原始数据集中的训练集按照6:2:2的比例划分成训练集、验证集和测试集保存在./data/new目录下，在保存时将猫和狗的数据分开存放。数据预处理的完整代码如下。
 ```python
 import os
 import shutil
@@ -183,7 +183,7 @@ Epoch 55/100
 118/118 [==============================] - 74s 627ms/step - loss: 0.2203 - accuracy: 0.9082 - val_loss: 0.1813 - val_accuracy: 0.9208
 ```
 ### 模型评估
-在模型训练过程中，accuracy和loss的变化如下图所示。可以看到模型的准确率达到90%，且模型在训练集和验证集上的结果十分接近，没有产生过拟合的问题。模型的总体效果较好。
+在模型训练过程中，accuracy和loss的变化如下图所示。可以看到模型的准确率达到90%，且模型在训练集和验证集上的结果十分接近，说明没有产生过拟合的问题。模型的总体效果较好。
 
 ![accuracy](./figure/accuracy.svg)
 ![loss](./figure/loss.svg)
@@ -193,5 +193,54 @@ Epoch 55/100
 - 早停策略：设置早停策略；
 - 优化batch大小：采用更大的batch size；
 ## 实验结果及分析
+将保存的模型加载进新的python程序，使用测试集中的数据对模型性能进行测试。模型测试的完整代码如下。
+```python
+import tensorflow as tf
 
+# 加载模型
+model = tf.keras.models.load_model('../model/dogs_and_cats.h5')
+
+# 设置数据集路径
+test_dir = '../data/new/test'
+
+# 加载数据
+test_datagen = tf.keras.preprocessing.image.ImageDataGenerator(rescale=1. / 255)
+test_generator = test_datagen.flow_from_directory(test_dir,
+                                                  target_size=(150, 150),
+                                                  batch_size=128,
+                                                  class_mode='binary')
+
+# 评估模型准确度
+results = model.evaluate(test_generator, verbose=1)
+
+# 输出结果
+print(f'Test Loss: {results[0]}')
+print(f'Test Accuracy: {results[1]}')
+```
+程序运行结果如下。我们可以看到模型在测试集上的准确度为92.6%，loss值为0.18。
+```text
+40/40 [==============================] - 10s 190ms/step - loss: 0.1821 - accuracy: 0.9262
+Test Loss: 0.1821325570344925
+Test Accuracy: 0.9261999726295471
+```
+从给出的测试结果来看，模型在测试集上具有较好的表现：
+
+- 损失 (Loss): 损失值为 0.1821，这是一个相对较低的数值。损失函数通常用于衡量模型预测与实际标签之间的差异，较低的损失值通常表示模型在测试数据上的预测较为准确。
+
+- 准确度 (Accuracy): 准确度为 92.62%。这表示，大约 92.62% 的测试样本被模型正确分类。在许多情况下，这被视为一个很好的结果。
+
+结论：
+
+- 模型的准确度很高，表明它在分类任务上表现良好，大多数测试样本都被正确分类。
+
+- 损失值较低，这进一步证实了模型的预测相当接近实际标签。
 ## 问题及解决方法
+1. 训练过程中loss无法下降：
+   - 使用`binary_crossentropy`作为损失函数，而不是`categorical_crossentropy`；
+   - 增大学习率，使用0.001（1e-3）代替0.0001（1e-4）
+2. 训练时间长：
+   - 使用Adam代替SGD；
+   - 增大batch大小；
+   - 设置早停策略；
+3. 验证集准确度低，模型过拟合：
+   - 使用数据增强；
